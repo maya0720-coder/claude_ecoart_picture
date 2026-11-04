@@ -38,6 +38,7 @@ cork_walkway/
 ├─ models/                       # ONNX 모델(README에 다운로드 안내)
 ├─ assets/ (app.ico, version_info.txt, fonts/)
 ├─ tests/
+├─ .claude/settings.json         # Ponytail 플러그인 프로젝트 등록 (S0)
 ├─ .claude/skills/cork-render/SKILL.md
 ├─ config.yaml
 ├─ requirements.txt              # 버전 고정
@@ -74,6 +75,7 @@ PySide6, opencv-python, numpy, Pillow, pillow-heif, onnxruntime, PyYAML, keyring
 - 사용자 설정·로그: `%APPDATA%\CorkWalkway\`
 
 ## 프로젝트 스킬 (`.claude/skills/cork-render/SKILL.md`)
+- 첫 줄에 "Ponytail 규칙 적용, 단 MAIN.md 규칙 우선"을 명시한다.
 - 파이프라인 요약, 전역 규칙, 모듈 인터페이스 표, 자주 틀리는 점(한글 경로, 원본 해상도 합성, 스레드)을 정리한다.
 
 ## 완료 기준
