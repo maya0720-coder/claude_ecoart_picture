@@ -1,0 +1,20 @@
+# 코르크 색상 프리셋
+# 주의: base_colors, granule_mm 은 모두 예시값이다. 실제 제품 자료의 값으로 교체할 것.
+# sample 파일이 없으면 절차적 텍스처로 대체한다(모듈 04).
+# sample_width_m(선택, 기본 0.3): 제품 사진 중앙 정사각 영역이 실제로 덮는 폭(m). 입자 크기 축척에 쓰인다.
+#   제품 사진은 표면을 정면에서, 자를 함께 놓고 찍어 이 값을 재면 가장 정확하다.
+- id: natural_brown
+  name: 내추럴 브라운
+  sample: natural_brown/sample.jpg
+  base_colors: ["#8B5A2B", "#A0522D", "#6B4423"]   # 예시값
+  granule_mm: 3.0                                  # 예시값
+- id: dark_brown
+  name: 다크 브라운
+  sample: dark_brown/sample.jpg
+  base_colors: ["#4A2C17", "#5C3A1E", "#3B2312"]   # 예시값
+  granule_mm: 3.0                                  # 예시값
+- id: color
+  name: 컬러
+  sample: color/sample.jpg
+  base_colors: ["#7A8B4A", "#9C6B3A", "#6B5A3A"]   # 예시값
+  granule_mm: 3.0                                  # 예시값
