@@ -4,12 +4,15 @@
 # - onedir(폴더형) 기본: 시작이 빠르고 백신 오탐이 적다.
 # - 리소스(models/, materials/, assets/, config.yaml)는 _internal 폴더에 들어간다.
 #   exe 옆에 같은 이름의 파일·폴더를 두면 그것이 먼저 쓰인다(app/config.py resolve_resource).
+import os
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 ROOT = Path(SPECPATH)
 APP_NAME = "CorkWalkway"
+# 단일 exe(태블릿 등에 파일 하나만 복사해 실행): build_windows.bat onefile  (환경 변수 CW_ONEFILE=1)
+ONEFILE = os.environ.get("CW_ONEFILE") == "1"
 
 datas = [
     (str(ROOT / "config.yaml"), "."),
@@ -47,23 +50,16 @@ a = Analysis(
     excludes=excludes,
     noarchive=False,
 )
+# OpenCV 동영상 코덱(ffmpeg, 약 27MB)은 쓰지 않는다(사진만 읽고, 카메라는 Qt). 크기·시작 시간을 줄이려고 뺀다.
+a.binaries = [b for b in a.binaries if "opencv_videoio_ffmpeg" not in b[0]]
 pyz = PYZ(a.pure)
+COMMON = dict(name=APP_NAME, console=False,                       # 콘솔 창 없음
+              icon=str(ROOT / "assets" / "app.ico"), version=str(ROOT / "assets" / "version_info.txt"),
+              upx=False)                                          # UPX 압축은 백신 오탐을 늘려 끈다
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,                         # onedir
-    name=APP_NAME,
-    console=False,                                 # 콘솔 창 없음
-    icon=str(ROOT / "assets" / "app.ico"),
-    version=str(ROOT / "assets" / "version_info.txt"),
-    upx=False,                                     # UPX 압축은 백신 오탐을 늘려 끈다
-)
-
-coll = COLLECT(exe, a.binaries, a.datas, name=APP_NAME, upx=False)
-
-# ---- onefile(단일 exe)로 만들려면: 위 exe·coll 대신 아래를 쓴다(시작이 느리고 백신 오탐이 늘 수 있음) ----
-# exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name=APP_NAME, console=False,
-#           icon=str(ROOT / "assets" / "app.ico"), version=str(ROOT / "assets" / "version_info.txt"),
-#           upx=False, runtime_tmpdir=None)
+if ONEFILE:
+    # 실행할 때마다 %TEMP%에 풀어서 실행한다 → 첫 화면까지 몇 초~수십 초(저장장치 속도에 따라)
+    exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], runtime_tmpdir=None, **COMMON)
+else:
+    exe = EXE(pyz, a.scripts, [], exclude_binaries=True, **COMMON)   # onedir
+    coll = COLLECT(exe, a.binaries, a.datas, name=APP_NAME, upx=False)

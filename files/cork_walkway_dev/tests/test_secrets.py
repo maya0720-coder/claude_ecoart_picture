@@ -73,7 +73,9 @@ def test_windows_credential_manager_available():
 
 
 @pytest.mark.parametrize("value, shown", [
-    ("AIzaSyD-abcdefghijk", "AIza****"),
+    ("AIzaSyD-abcdefghijk", "AIza…hijk"),
+    ("AQ.FakeKeyForTests_abcdefghijklmnop0123", "AQ.F…0123"),   # 새 형식: 뒤 4자리로 구분
+    ("AIzaSyD-abcdef", "AIza****"),                             # 16자 미만: 뒤 글자 숨김
     ("abcde", "abcd****"),
     ("abcd", "****"),
     ("a", "****"),

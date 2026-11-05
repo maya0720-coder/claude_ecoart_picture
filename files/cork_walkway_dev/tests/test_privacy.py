@@ -83,6 +83,7 @@ def test_log_has_no_base64_or_key(appdirs):
     log.info("응답: %s", blob)
     log.info("data:image/jpeg;base64," + blob[:500])
     log.warning("키 AIzaSyD-abcdefghijklmnopqrstuvwxyz012345 사용")
+    log.warning("새 형식 키 AQ.FakeKeyForTests_abcdefghijklmnop0123 사용")
     try:
         raise RuntimeError("server said " + blob[:300])
     except RuntimeError:
@@ -92,7 +93,7 @@ def test_log_has_no_base64_or_key(appdirs):
         h.flush()
     text = path.read_text(encoding="utf-8")
     assert not re.search(r"[A-Za-z0-9+/]{64,}", text)
-    assert "AIza" not in text
+    assert "AIza" not in text and "AQ.Fake" not in text
     assert "Gemini 호출 실패" in text and "RuntimeError" in text
     assert "1024x768" in text
     assert str(path).startswith(str(appdirs / "Roaming"))

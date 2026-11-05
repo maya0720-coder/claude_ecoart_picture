@@ -1,6 +1,9 @@
 __pycache__/
 *.pyc
 .venv/
+.venv-*/
+build_log.txt
+tools/icon_preview.png
 .pytest_cache/
 build/
 dist/

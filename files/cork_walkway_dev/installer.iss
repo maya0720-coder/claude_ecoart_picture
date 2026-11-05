@@ -4,7 +4,7 @@
 #ifndef AppVersion
   #define AppVersion "0.1.0"
 #endif
-#define AppName "코르크 산책로 시공 예상도"
+#define AppName "시공 시뮬레이터"
 #define AppExe "CorkWalkway.exe"
 
 [Setup]

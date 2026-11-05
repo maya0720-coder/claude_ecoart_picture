@@ -11,7 +11,10 @@ def test_spec_valid_and_complete():
     compile(src, "build.spec", "exec")
     assert "console=False" in src
     assert "exclude_binaries=True" in src                          # onedir 기본
-    assert "# exe = EXE(pyz, a.scripts, a.binaries" in src        # onefile은 주석으로만
+    assert 'ONEFILE = os.environ.get("CW_ONEFILE") == "1"' in src   # 단일 exe는 명시적으로 요청할 때만
+    assert "a.scripts, a.binaries, a.datas" in src and "runtime_tmpdir=None" in src
+    bat = (ROOT / "build_windows.bat").read_text(encoding="utf-8")
+    assert 'if /i "%~1"=="onefile" set CW_ONEFILE=1' in bat
     for d in ('"config.yaml"', '"materials"', '"assets"', '"models"'):
         assert d in src, d
     for h in ("onnxruntime", "keyring.backends.Windows", "PySide6.QtMultimedia", "certifi"):

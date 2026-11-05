@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 저장소 현재 상태
 
-아직 소스 코드는 없고 **개발 지시서(스펙)만** 있다. 만들 프로그램은 "코르크 산책로 시공 예상도" Windows 데스크톱 앱이다. 영업 담당자가 현장 흙길 사진을 찍으면 흙길만 코르크 포장으로 바꾼 예상도를 만든다.
+"코르크 산책로 시공 예상도" Windows 데스크톱 앱. 영업 담당자가 현장 흙길 사진을 올리면 흙길만 코르크 포장으로 바꾼 예상도를 만든다. 전 모듈 구현 완료 상태이고, 2026-11-05에 스펙 v2(사진 → Gemini API 자동 변환)로 개정했다.
 
-- `files/cork_walkway_dev/`가 실제 프로젝트 루트다. 코드는 이 폴더 안에 `00_project_setup.md`의 폴더 구조대로 만든다(`app/`, `tests/`, `config.yaml` 등).
+- `files/cork_walkway_dev/`가 실제 프로젝트 루트다. 코드는 이 폴더 안에 `00_project_setup.md`의 폴더 구조대로 있다(`app/`, `tests/`, `config.yaml` 등). 가상환경은 `.venv`(`.venv/Scripts/python.exe`).
   - 이 폴더에는 자체 `CLAUDE.md`(MAIN.md를 읽으라는 지시만 있음)와 `.claude/settings.json`(Ponytail 플러그인 등록)이 있다. 명령은 이 폴더에서 실행한다.
 - `files.zip`, `files/cork_walkway_dev.zip`, `files/S0_ponytail_skill.md`는 같은 스펙의 사본이다. 이 파일들은 고치지 않는다. 정본은 `files/cork_walkway_dev/` 안의 파일이다.
 
@@ -20,28 +20,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 명령 (구현 후, `files/cork_walkway_dev/`에서)
 
-- 앱 실행: `python -m app.main`
+- 앱 실행: `python -m app.main`(간편 화면) / `python -m app.main --classic`(단계별 화면)
 - 전체 테스트: `pytest` / 단일 테스트: `pytest tests/test_compositor.py::test_name`
 - 성능 측정: `python tests/bench.py` (12MP 합성 이미지로 단계별 시간을 재고 MAIN.md 6장 목표와 비교)
 - **빌드 금지**: `build.spec`, `build_windows.bat`, `installer.iss`는 작성만 한다. `pyinstaller`, `iscc`, bat 파일은 실행하지 않는다. 빌드는 사용자가 직접 한다.
 
-## 아키텍처 개요
+## 아키텍처 개요 (v2, 2026-11-05 개정 — 바뀐 이유는 `MAIN.md` 8장)
 
-Python 3.11 + PySide6, 오프라인 우선 파이프라인. 모든 단계가 `app/models.py`의 `WorkSession` dataclass 하나를 주고받는다.
+Python 3.11 + PySide6. 모든 단계가 `app/models.py`의 `WorkSession` dataclass 하나를 주고받는다. 화면이 두 개다.
 
+**간편 화면(기본, `app/ui/quick_window.py`)**: 사진만 올리면 사용자 조작 없이 자동 변환한다.
 ```
-image_io(EXIF 보정) → segmentation(SAM 계열 ONNX, 터치 점 → mask)
-  → perspective(길 4점 quad) → cork_material(프리셋 텍스처)
-  → render_local(원근 투영 + LAB 명암 유지 + 색 맞춤 → 길 영역 레이어)
-  → compositor(feather 알파 합성 + 마스크 밖 무변경 검증)
-  → [선택] ai/gemini_hq(크롭 전송 → align.py로 정렬 → compositor로 재합성·재검증)
-  → export(비교 이미지·PDF, 워터마크)
+image_io(EXIF 보정) → [전송 확인] → ai/gemini_convert.GeminiConvert.convert
+  (사진 전체 축소본 + materials/cork/<id>/reference.jpg → Gemini API 이미지 편집)
+  → merge_edited: align.py로 정렬 → change_mask(원본과 실제로 바뀐 영역 = 길 마스크)
+  → compositor.composite_verified(원본 해상도, 길 밖 무변경 검증)
+  → 전·후 비교(CompareView) → export(비교 이미지·PDF, 워터마크)
 ```
 
-- **핵심 불변식**: 길 마스크 바깥 픽셀은 원본과 100% 같아야 한다. `verify_outside_unchanged`가 통과하지 못한 결과는 버린다(저장·프레젠테이션 불가). Gemini 결과도 반드시 같은 compositor를 거친다. 최종 합성은 원본 해상도에서 하고, 미리보기는 축소본으로 렌더한다.
-- **Gemini는 기본 꺼짐**이고 실패하면 로컬 결과로 돌아간다. 실행 중에는 Claude API를 쓰지 않는다. 전송은 `security/privacy.prepare_for_send`(EXIF 제거, 길 주변 크롭, 축소)를 거친 인라인 바이트만 허용한다. Files API·컨텍스트 캐싱·대화 세션·그라운딩은 금지이고, 정적 검사 테스트로 확인한다. 네트워크 대상은 `generativelanguage.googleapis.com` 하나뿐이다.
-- **모델 파일이 없어도** 동작해야 한다. segmentation은 수동 브러시·다각형 도구로 대신하고, Gemini는 버튼을 비활성화하고 사유를 표시한다.
-- 무거운 작업(인코더, 렌더, Gemini 호출)은 `QThreadPool`/`QRunnable`로 돌리고 UI 스레드를 막지 않는다. 프리셋을 바꿀 때 2초 안에 반영되도록 remap 좌표맵을 캐시한다.
+**단계별 화면(보조·오프라인, `app/ui/main_window.py`, `python -m app.main --classic`)**: v1 파이프라인.
+```
+segmentation(SAM ONNX) → perspective(4점) → cork_material(텍스처) → render_local → compositor
+  → [선택] ai/gemini_hq(길 주변 크롭 전송 → 정렬 → 재합성·재검증) → export
+```
+
+- **핵심 불변식**: 길 마스크 바깥 픽셀은 원본과 100% 같아야 한다. `verify_outside_unchanged`가 통과하지 못한 결과는 버린다(저장 불가). Gemini 결과도 반드시 `merge_edited`/compositor를 거친다. 최종 합성은 원본 해상도에서 한다.
+- **Gemini API는 간편 화면의 기본 기능**이지만 설치 직후에는 꺼져 있다. 사용자가 [설정]에서 켜고(유료 키 확인 체크 + 키) 전송 확인 창에서 승인해야 보낸다. 무료 등급 키는 이미지 모델 할당량이 0이라 실패한다. 실행 중 Claude API는 쓰지 않는다.
+- 전송은 `security/privacy.prepare_for_send`(EXIF 제거, 축소)를 거친 인라인 바이트만 허용한다. Files API·컨텍스트 캐싱·대화 세션·그라운딩 금지, `store=False`. 네트워크 대상은 `generativelanguage.googleapis.com` 하나뿐이고 `app/` 코드에 다른 URL·네트워크 모듈 import가 없어야 한다(정적 검사 테스트).
+- Gemini 앱(구독) 자동화·브라우저 자동 조작은 하지 않는다(공식 API 없음, 약관 위반).
+- 무거운 작업(사진 읽기, Gemini 호출, 합성, 저장, 인코더, 렌더)은 `app/ui/workers.py`의 `Runner`(Python 스레드 풀)로 돌리고 UI 스레드를 막지 않는다.
+- 테스트는 실제 Gemini를 호출하지 않는다. `httpx.MockTransport` 가짜 서버로 검증한다(`tests/test_gemini_convert.py`, `tests/test_quick_window.py`).
 
 ## 자주 틀리는 전역 규칙
 

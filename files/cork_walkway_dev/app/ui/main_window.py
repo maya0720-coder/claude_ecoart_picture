@@ -53,7 +53,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config = config
         self.settings = load_user_settings()
-        self.setWindowTitle("코르크 산책로 시공 예상도")
+        self.setWindowTitle("시공 시뮬레이터 — 단계별 화면")
         self.setStyleSheet(STYLE)
         self.setAcceptDrops(True)
         self.resize(1280, 800)

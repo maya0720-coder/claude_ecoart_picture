@@ -184,11 +184,16 @@ def _hex_bgr(c: str) -> np.ndarray:
     return np.array([int(c[5:7], 16), int(c[3:5], 16), int(c[1:3], 16)], np.float32)
 
 
-def _tile_procedural(preset: CorkPreset, px_per_m: int, size_px: int, rng: np.random.Generator) -> np.ndarray:
-    """입자(보로노이 셀) 배치로 코르크 칩 질감 생성. 원환(torus) 위에서 계산해 이음매가 없다."""
-    s = size_px
-    g = max(MIN_GRANULE_PX, preset.granule_mm / 1000.0 * px_per_m)
-    # 층화 무작위 배치(Poisson disk 근사): 칸마다 점 하나 → 크기가 고르면서 모양이 불규칙한 입자
+def _wrap_blur(x: np.ndarray, sigma: float) -> np.ndarray:
+    """원환 패딩 가우시안 블러(타일 이음매 유지)."""
+    pad = int(np.ceil(3 * sigma)) + 1
+    pad = min(pad, x.shape[0])
+    big = np.pad(x, ((pad, pad), (pad, pad)) + ((0, 0),) * (x.ndim - 2), mode="wrap")
+    return cv2.GaussianBlur(big, (0, 0), sigma)[pad:-pad, pad:-pad]
+
+
+def _voronoi_cells(s: int, g: float, rng: np.random.Generator) -> tuple[np.ndarray, int]:
+    """원환 위 보로노이 셀 번호(s×s int64)와 셀 개수. 칸마다 점 하나(Poisson disk 근사)."""
     n = max(2, int(round(s / g)))
     cell = s / n
     gy, gx = np.mgrid[0:n, 0:n]
@@ -209,23 +214,67 @@ def _tile_procedural(preset: CorkPreset, px_per_m: int, size_px: int, rng: np.ra
     zero_y, zero_x = np.nonzero(canvas == 0)
     lut = np.zeros(lab.max() + 1, np.int64)
     lut[lab[zero_y, zero_x]] = idx_img[zero_y, zero_x]
-    cells = lut[lab][m:m + s, m:m + s]
+    return lut[lab][m:m + s, m:m + s], len(pts)
 
+
+def _warp_cells(cells: np.ndarray, g: float, rng: np.random.Generator) -> np.ndarray:
+    """주기 노이즈로 좌표를 비틀어 볼록 다각형 셀을 불규칙한 칩 모양으로 만든다."""
+    s = cells.shape[0]
+    amp = 0.45 * g
+    sig = max(1.0, 0.6 * g)
+    dx = _wrap_blur(rng.normal(0, 1, (s, s)).astype(np.float32), sig)
+    dy = _wrap_blur(rng.normal(0, 1, (s, s)).astype(np.float32), sig)
+    dx *= amp / max(float(dx.std()), 1e-6)
+    dy *= amp / max(float(dy.std()), 1e-6)
+    gy, gx = np.mgrid[0:s, 0:s].astype(np.float32)
+    # 셀 번호는 float32로 정확히 표현되는 범위(2^24)를 넘지 않는다(타일 1024px, 입자 ≥2px → 최대 약 26만 개)
+    warped = cv2.remap(cells.astype(np.float32), np.mod(gx + dx, s), np.mod(gy + dy, s),
+                       cv2.INTER_NEAREST, borderMode=cv2.BORDER_WRAP)
+    return warped.astype(np.int64)
+
+
+def _tile_procedural(preset: CorkPreset, px_per_m: int, size_px: int, rng: np.random.Generator) -> np.ndarray:
+    """코르크 칩 질감 생성. 원환(torus) 위에서 계산해 이음매가 없다.
+
+    실제 코르크 포장 사진 기준: 같은 색 계열의 밝고 어두운 칩이 섞인 낮은 대비 표면.
+    - 큰 칩 + 작은 칩 두 층(무작위 크기), 좌표 왜곡으로 불규칙한 모양
+    - base_colors에서 칩마다 색을 고른다(같은 색을 여러 번 적으면 그 색 비율이 커진다)
+    - 칩 사이 틈은 얕게(결합재), 마지막에 약한 블러로 사진 같은 부드러움
+    """
+    s = size_px
+    g = max(MIN_GRANULE_PX, preset.granule_mm / 1000.0 * px_per_m)
     colors = np.stack([_hex_bgr(c) for c in preset.base_colors])
-    pick = colors[rng.integers(len(colors), size=len(pts))]
-    bright = rng.normal(1.0, 0.12, (len(pts), 1)).astype(np.float32)
-    tint = rng.normal(0, 6, (len(pts), 3)).astype(np.float32)
-    img = pick[cells] * bright[cells] + tint[cells]
 
-    # 입자 사이 어두운 틈(결합재): 이웃 픽셀과 입자가 다른 곳(원환 기준)
+    def chip_layer(gg: float) -> tuple[np.ndarray, np.ndarray]:
+        cells, n = _voronoi_cells(s, gg, rng)
+        if gg >= 3:
+            cells = _warp_cells(cells, gg, rng)
+        pick = colors[rng.integers(len(colors), size=n)]
+        bright = rng.normal(1.0, 0.09, (n, 1)).astype(np.float32)
+        tint = rng.normal(0, 2.5, (n, 3)).astype(np.float32)
+        return cells, pick * bright + tint
+
+    cells, col = chip_layer(g)
+    img = col[cells]
+    # 작은 칩 층: 큰 칩 사이를 일부 메운다(입자 크기 분포)
+    g2 = max(MIN_GRANULE_PX, 0.55 * g)
+    cells2, col2 = chip_layer(g2)
+    cover = _wrap_blur(rng.normal(0, 1, (s, s)).astype(np.float32), max(1.0, g)) > 0.35
+    img[cover] = col2[cells2][cover]
+
+    # 입자 사이 어두운 틈(결합재): 얕고 부드럽게
     if g >= 4:
-        edge = (cells != np.roll(cells, 1, 0)) | (cells != np.roll(cells, 1, 1))
-        img[edge] *= 0.62
-    # 미세 노이즈 + 약한 하이라이트(이음매 없도록 원환 패딩 후 블러)
-    pad = 8
-    noise = rng.normal(0, 1, (s, s)).astype(np.float32)
-    noise = cv2.GaussianBlur(np.pad(noise, pad, mode="wrap"), (0, 0), 0.8)[pad:-pad, pad:-pad]
-    img *= (1 + 0.06 * noise)[..., None]
-    hl = rng.random((s, s)) > 0.995
-    img[hl] = np.minimum(img[hl] * 1.25, 255)
+        edge = ((cells != np.roll(cells, 1, 0)) | (cells != np.roll(cells, 1, 1))).astype(np.float32)
+        edge = _wrap_blur(edge, 0.7)
+        img *= (1 - 0.18 * np.clip(edge * 1.6, 0, 1))[..., None]
+    # 칩 안쪽 미세 결(코르크 기공) + 드문 하이라이트
+    noise = _wrap_blur(rng.normal(0, 1, (s, s)).astype(np.float32), 0.7)
+    img *= (1 + 0.04 * noise / max(float(noise.std()), 1e-6))[..., None]
+    # 칩 무리 단위 얼룩(칩 크기의 약 4배): 멀리서 칩이 1px보다 작아져도 실제 사진처럼 얼룩 결이 남는다
+    clump = _wrap_blur(rng.normal(0, 1, (s, s)).astype(np.float32), max(1.5, 1.5 * g))
+    img *= (1 + 0.07 * clump / max(float(clump.std()), 1e-6))[..., None]
+    hl = rng.random((s, s)) > 0.997
+    img[hl] = np.minimum(img[hl] * 1.12, 255)
+    # 사진 같은 부드러움(렌즈·센서 블러 근사)
+    img = _wrap_blur(img, 0.6)
     return np.clip(img, 0, 255).astype(np.uint8)

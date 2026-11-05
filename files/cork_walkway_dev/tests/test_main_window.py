@@ -7,5 +7,5 @@ def test_main_window_shows(qapp):
     w.show()
     qapp.processEvents()
     assert w.isVisible()
-    assert w.windowTitle() == "코르크 산책로 시공 예상도"
+    assert w.windowTitle() == "시공 시뮬레이터 — 단계별 화면"
     w.close()

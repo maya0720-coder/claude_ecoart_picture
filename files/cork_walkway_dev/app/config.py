@@ -97,7 +97,6 @@ def _validate(cfg: dict) -> None:
     if not isinstance(cfg["gemini"]["enabled"], bool):
         raise ValueError("gemini.enabled는 true/false여야 합니다")
 
-
 # ---- 사용자 설정(%APPDATA%\CorkWalkway\settings.json): 비밀이 아닌 선택값만. API 키는 secrets.py ----
 USER_DEFAULTS: dict = {
     "gemini_enabled": False,
@@ -106,6 +105,9 @@ USER_DEFAULTS: dict = {
     "hq_candidates": 1,                   # 고품질 후보 수(1~3)
     "last_folder": "",                    # 마지막으로 연 사진 폴더(최근 사진)
     "output_folder": "",                  # 마지막 저장 폴더
+    "sidebar_width": 340,                 # 간편 화면 왼쪽 패널 폭(px, 사용자가 구분선을 끌어 조정)
+    "clear_debris": True,                 # 길 위 나뭇가지·낙엽 정리 요청
+    "edge_finish": True,                  # 길 가장자리 마감재(경계석 등) 시공 요청
 }
 
 

@@ -14,8 +14,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "tests")]
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import cv2  # noqa: E402
+import numpy as np  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from app.ai.gemini_convert import merge_edited  # noqa: E402
 from app.core import render_local as rl  # noqa: E402
 from app.core.compositor import composite_verified  # noqa: E402
 from app.core.cork_material import load_presets  # noqa: E402
@@ -27,6 +30,9 @@ from app.models import WorkSession  # noqa: E402
 from synth import iou, make_scene  # noqa: E402
 
 TARGETS = {  # MAIN.md 6장
+    "사진 읽기(12MP JPG)": 3.0,
+    "Gemini 결과 정렬·영역 검출·합성(12MP)": 5.0,
+    "저장(시공후·비교·PDF·설정 4종)": 5.0,
     "사진 불러오기 + 마스크 준비": 5.0,
     "터치 1회당 마스크 갱신": 1.0,
     "로컬 렌더링(12MP)": 10.0,
@@ -56,7 +62,15 @@ def main() -> int:
             _, t_enc = timed(seg.set_image, img)
         else:
             t_enc = 0.0
-        rows.append(("사진 읽기(12MP JPG)", t_load, None))
+        rows.append(("사진 읽기(12MP JPG)", t_load, TARGETS["사진 읽기(12MP JPG)"]))
+
+        # 간편 화면: Gemini가 보낸 크기(긴 변 1536)로 길만 바꿔 돌려준 경우의 후처리(네트워크 제외)
+        sent = cv2.resize(img, (1536, 1152), interpolation=cv2.INTER_AREA)
+        m_small = cv2.resize(sc.path, (1536, 1152), interpolation=cv2.INTER_NEAREST) > 0
+        edited = sent.copy()
+        edited[m_small] = np.random.default_rng(0).normal((125, 160, 200), 10, (m_small.sum(), 3)).clip(0, 255)
+        _, t_merge = timed(merge_edited, img, edited, sent)
+        rows.append(("Gemini 결과 정렬·영역 검출·합성(12MP)", t_merge, TARGETS["Gemini 결과 정렬·영역 검출·합성(12MP)"]))
         rows.append(("미리보기 축소", t_prev, None))
         rows.append(("길 인식 모델 로드(시작 시 1회, 뒤에서)", t_model, None))
         rows.append(("길 인식 인코더", t_enc, None))
@@ -95,7 +109,7 @@ def main() -> int:
 
         s.result_local, s.verified = out, True
         _, t_save = timed(export_result, s, td, "벤치", preset_name=presets[0].name)
-        rows.append(("저장(시공후·비교·PDF·설정 4종)", t_save, None))
+        rows.append(("저장(시공후·비교·PDF·설정 4종)", t_save, TARGETS["저장(시공후·비교·PDF·설정 4종)"]))
 
     w = max(len(r[0]) for r in rows) + 2
     print(f"{'단계':<{w}} {'시간(초)':>8}  목표")

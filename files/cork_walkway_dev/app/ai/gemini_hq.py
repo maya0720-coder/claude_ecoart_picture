@@ -51,6 +51,11 @@ class SendPackage:
     target: str = "Google Gemini API"
     confirmed: bool = False
     preview: np.ndarray | None = field(default=None, repr=False)   # 확인 창용 미리보기(BGR)
+    description: str = ""                    # 확인 창에 보일 '보낼 이미지' 설명(비우면 고품질 모드 기본 문구)
+    preset: object = field(default=None, repr=False)               # 간편 변환: 색상 프리셋·사용자 소재(프롬프트용)
+    note: str = field(default="", repr=False)                      # 간편 변환: 사용자 추가 요청 글(정리된 것)
+    clear_debris: bool = True                                      # 간편 변환: 길 위 나뭇가지·낙엽 등 정리 요청
+    edge_finish: bool = True                                       # 간편 변환: 길 가장자리 마감재(경계석 등) 시공
 
 
 class GeminiHQ:
@@ -71,7 +76,7 @@ class GeminiHQ:
         """(사용 가능, 불가 사유)."""
         st = self._settings_getter()
         if not (self.config_enabled or st.get("gemini_enabled")):
-            return False, "고품질 모드가 꺼져 있습니다(설정에서 켤 수 있음)."
+            return False, "Gemini 사용이 꺼져 있습니다(설정에서 켤 수 있음)."
         if not st.get("gemini_paid_key_confirmed"):
             return False, "설정에서 'Cloud Billing이 연결된 유료 키임을 확인함'을 체크해야 사용할 수 있습니다."
         if not self.model:
@@ -158,18 +163,30 @@ class GeminiHQ:
         try:
             resp = client.models.generate_content(model=self.model, contents=contents, config=config)
         except errors.APIError as e:
-            raise HQError(_api_reason(e.code)) from None
+            raise HQError(_api_reason(e.code, e.message)) from None
         except Exception as e:  # 네트워크 계층 예외(httpx 등)는 종류가 많아 이름으로 분류
             name = type(e).__name__
             if "Timeout" in name:
-                raise HQError(f"응답 시간({self.timeout_s}초)을 넘었습니다. 로컬 결과를 유지합니다.") from None
-            raise HQError("네트워크 오류로 보내지 못했습니다. 로컬 결과를 유지합니다.") from None
+                raise HQError(f"응답 시간({self.timeout_s}초)을 넘었습니다. 잠시 후 다시 시도하세요.") from None
+            raise HQError("네트워크 오류로 보내지 못했습니다. 인터넷 연결을 확인하세요.") from None
         return _image_from_response(resp)
 
 
-def _api_reason(code: int) -> str:
+def _api_reason(code: int, message: str | None = "") -> str:
+    """화면에 보일 한 줄 사유. 응답 원문은 화면·로그에 그대로 내보내지 않고 원인 분류에만 쓴다."""
+    msg = (message or "").lower()
     if code == 429:
-        return "사용 한도(할당량)를 넘었습니다. 잠시 후 다시 시도하세요."
+        if "free_tier" in msg and "limit: 0" in msg:
+            return ("이 API 키의 Google 프로젝트가 무료 등급이라 이미지 모델을 쓸 수 없습니다(할당량 0). "
+                    "Google AI Studio에서 이 키의 프로젝트에 결제(Billing)를 연결한 뒤 다시 시도하세요.")
+        if "per day" in msg or "perday" in msg:
+            return "오늘 사용 한도(할당량)를 모두 썼습니다. 내일 다시 시도하거나 AI Studio에서 한도를 확인하세요."
+        return "사용 한도(할당량)를 넘었습니다. 1분쯤 뒤 다시 시도하세요."
+    if code == 402:
+        if "prepay" in msg or "credit" in msg:
+            return ("Gemini API 선불 크레딧이 모두 소진되었습니다(잔액 없음). "
+                    "AI Studio의 프로젝트 결제(Billing) 화면에서 크레딧을 충전한 뒤 다시 시도하세요.")
+        return "Gemini API 결제 문제로 거절되었습니다. AI Studio에서 이 키의 프로젝트 결제 상태를 확인하세요."
     if code in (401, 403):
         return "API 키가 거부되었습니다. 설정에서 키와 결제 연결을 확인하세요."
     if code == 404:
@@ -178,13 +195,13 @@ def _api_reason(code: int) -> str:
         return "요청이 거부되었습니다(지원하지 않는 모델·형식일 수 있음)."
     if code >= 500:
         return "Gemini 서버 오류입니다. 잠시 후 다시 시도하세요."
-    return f"Gemini 오류(코드 {code})입니다. 로컬 결과를 유지합니다."
+    return f"Gemini 오류(코드 {code})입니다. 잠시 후 다시 시도하고, 계속되면 AI Studio에서 프로젝트 상태를 확인하세요."
 
 
 def _image_from_response(resp) -> np.ndarray:
     fb = getattr(resp, "prompt_feedback", None)
     if fb is not None and getattr(fb, "block_reason", None):
-        raise HQError("안전 필터에 의해 차단되었습니다. 로컬 결과를 유지합니다.")
+        raise HQError("Google 안전 필터에 의해 차단되었습니다. 사진 속 사람·글자가 원인일 수 있습니다.")
     for cand in resp.candidates or []:
         for part in (cand.content.parts if cand.content and cand.content.parts else []):
             blob = part.inline_data
@@ -194,8 +211,8 @@ def _image_from_response(resp) -> np.ndarray:
                     return img
         reason = getattr(cand.finish_reason, "name", "") if cand.finish_reason else ""
         if reason in ("SAFETY", "IMAGE_SAFETY", "PROHIBITED_CONTENT", "IMAGE_PROHIBITED_CONTENT", "BLOCKLIST", "SPII"):
-            raise HQError("안전 필터에 의해 차단되었습니다. 로컬 결과를 유지합니다.")
-    raise HQError("응답에 이미지가 없습니다. 로컬 결과를 유지합니다.")
+            raise HQError("Google 안전 필터에 의해 차단되었습니다. 사진 속 사람·글자가 원인일 수 있습니다.")
+    raise HQError("응답에 이미지가 없습니다. 다시 시도하세요.")
 
 
 def network_reachable() -> bool | None:

@@ -6,7 +6,10 @@
 - id: natural_brown
   name: 내추럴 브라운
   sample: natural_brown/sample.jpg
-  base_colors: ["#8B5A2B", "#A0522D", "#6B4423"]   # 예시값
+  # 에코코르크 시공 사진(2026-11 영업 제공)에서 측정한 칩 색 분포. 같은 색을 여러 번 적으면 그 칩 비율이 커진다.
+  # 주광 기준 연한 황갈색(평균 약 #C09A78), 밝은 칩·어두운 칩이 섞인 낮은 대비.
+  base_colors: ["#C9A27F", "#C9A27F", "#C9A27F", "#B88F6C", "#B88F6C", "#B88F6C",
+                "#D8B898", "#D8B898", "#A27A58", "#A27A58", "#E6CFB4", "#7E5A3C"]
   granule_mm: 3.0                                  # 예시값
 - id: dark_brown
   name: 다크 브라운

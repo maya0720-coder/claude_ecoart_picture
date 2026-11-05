@@ -124,7 +124,8 @@ def cleanup_temp() -> None:
 
 # ---- 로그 ----
 _B64 = re.compile(r"[A-Za-z0-9+/_-]{64,}={0,2}")
-_GOOGLE_KEY = re.compile(r"AIza[0-9A-Za-z_-]{20,}")
+# Google API 키: 기존 형식(AIza…) + 새 형식(AQ.…, AI Studio에서 2026년 발급되는 키)
+_GOOGLE_KEY = re.compile(r"AIza[0-9A-Za-z_-]{20,}|\bAQ\.[0-9A-Za-z_-]{20,}")
 
 
 class RedactFilter(logging.Filter):

@@ -6,6 +6,8 @@ rem   1) check Python 3.11  2) create venv  3) install requirements
 rem   4) run tests (stop on failure)  5) PyInstaller (onedir)
 rem   6) portable zip  7) Inno Setup installer (only if iscc is installed)
 rem  Messages are in English on purpose: cmd.exe can garble UTF-8 text.
+rem  Usage: build_windows.bat          (folder build + portable zip + installer)
+rem         build_windows.bat onefile  (single CorkWalkway.exe for tablets; no zip/installer)
 rem ============================================================
 setlocal
 cd /d "%~dp0"
@@ -13,6 +15,8 @@ cd /d "%~dp0"
 set APP=CorkWalkway
 set VENV=.venv-build
 set DIST=dist\%APP%
+set CW_ONEFILE=
+if /i "%~1"=="onefile" set CW_ONEFILE=1
 
 rem ---- 1. Python 3.11 ----
 set PY=
@@ -49,11 +53,18 @@ if not exist "models\mobile_sam_image_encoder.onnx" (
 
 rem ---- 5. PyInstaller ----
 "%VPY%" -m PyInstaller build.spec --noconfirm --clean || (echo [ERROR] PyInstaller failed & exit /b 1)
+if defined CW_ONEFILE (
+  if not exist "dist\%APP%.exe" (echo [ERROR] dist\%APP%.exe not created & exit /b 1)
+  echo [5/5] single file: dist\%APP%.exe
+  echo Done. Copy only this exe to the tablet.
+  exit /b 0
+)
 if not exist "%DIST%\%APP%.exe" (echo [ERROR] %DIST%\%APP%.exe not created & exit /b 1)
 echo [5/7] built: %DIST%\%APP%.exe
 
 rem ---- 6. portable zip ----
-for /f %%v in ('"%VPY%" -c "import app;print(app.__version__)"') do set VER=%%v
+rem VPY is a relative path without spaces; quoting it inside for /f makes cmd strip the wrong quotes
+for /f %%v in ('%VPY% -c "import app;print(app.__version__)"') do set VER=%%v
 if not defined VER set VER=0.0.0
 powershell -NoProfile -Command "Compress-Archive -Path '%DIST%' -DestinationPath 'dist\%APP%-%VER%-portable.zip' -Force" || (echo [ERROR] zip failed & exit /b 1)
 echo [6/7] portable: dist\%APP%-%VER%-portable.zip

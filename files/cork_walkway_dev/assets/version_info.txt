@@ -15,11 +15,11 @@ VSVersionInfo(
     StringFileInfo([
       StringTable('041204B0', [
         StringStruct('CompanyName', 'CorkWalkway'),
-        StringStruct('FileDescription', '코르크 산책로 시공 예상도'),
+        StringStruct('FileDescription', '시공 시뮬레이터'),
         StringStruct('FileVersion', '0.1.0'),
         StringStruct('InternalName', 'CorkWalkway'),
         StringStruct('OriginalFilename', 'CorkWalkway.exe'),
-        StringStruct('ProductName', '코르크 산책로 시공 예상도'),
+        StringStruct('ProductName', '시공 시뮬레이터'),
         StringStruct('ProductVersion', '0.1.0')
       ])
     ]),
