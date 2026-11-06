@@ -31,16 +31,14 @@ WizardStyle=modern
 [Languages]
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 
-[Tasks]
-Name: "desktopicon"; Description: "바탕화면 바로가기 만들기"; GroupDescription: "추가 작업:"
-
 [Files]
 Source: "dist\CorkWalkway\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{group}\{#AppName} 제거"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
+; 바탕화면 바로가기는 항상 만든다. {autodesktop}은 설치하는 PC·사용자의 실제 바탕화면 경로(OneDrive 리디렉션 포함)로 풀린다.
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "지금 실행"; Flags: nowait postinstall skipifsilent
